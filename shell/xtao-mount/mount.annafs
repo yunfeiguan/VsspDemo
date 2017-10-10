@@ -143,7 +143,8 @@ function do_mount() {
     #echo $mount_path $CLIENT_NAME
     
     if [ `grep -c ${CLIENT_NAME}_client  ${CLIENT_FILE}` -gt '0' ]; then
-	echo "create error: the client $CLIENT_NAME exist already!"
+	#echo "create error: the client $CLIENT_NAME exist already!"
+	systemctl start ${CLIENT_NAME}
 	exit 1
     fi
 
@@ -194,7 +195,6 @@ function do_mount() {
     if [ $? -eq 0 ]; then
 	echo "Start successfully for ${CLIENT_NAME}"
     fi
- 
     echo "Mount success"
 }
 
