@@ -1,0 +1,208 @@
+#!/bin/sh
+
+MOUNT_PATH=
+CLIENT_NAME=
+
+CLUSTER_NAME="xtao"
+CLIENT_FILE="/etc/ceph/.clients"
+CONF_DIR="/etc/ceph"
+CRASH_DIR="/var/crash"
+LOG_DIR="/var/log/ceph"
+VAR_RUN_DIR="/var/run/ceph"
+SERVICE_DIR="/usr/lib/systemd/system"
+
+print_usage ()
+{
+cat << EOF
+
+Usage: $0  <cluster-name> <mountpoint>
+
+example:
+    $0 xtao /mnt/annaVol/
+    mount -t annafs xtao /mnt/annaVol/
+EOF
+}
+
+CheckIPAddr()
+{
+    echo $1|grep "^[0-9]\{1,3\}\.\([0-9]\{1,3\}\.\)\{2\}[0-9]\{1,3\}$" > /dev/null;
+    #IP addr must be numbers
+    if [ $? -ne 0 ]
+    then
+        return 1
+    fi
+    ipaddr=$1
+    a=`echo $ipaddr|awk -F . '{print $1}'`  #以"."分隔，取出每个列的值
+    b=`echo $ipaddr|awk -F . '{print $2}'`
+    c=`echo $ipaddr|awk -F . '{print $3}'`
+    d=`echo $ipaddr|awk -F . '{print $4}'`
+    for num in $a $b $c $d
+    do
+        if [ $num -gt 255 ] || [ $num -lt 0 ]    #每个数值必须在0-255之间
+        then
+            return 1
+        fi
+    done
+    return 0
+} 
+
+function parse_arguments() {
+    if [ $# -lt 2 ]; then
+	print_usage
+    fi
+    echo "$@" && echo ""
+    
+    CheckIPAddr $1
+
+    if [ $? = 0 ];then
+	echo "Error,It needs a cluster neme instead of a ip address!"
+	print_usage
+	exit -1
+    else 
+	conf_file=${CONF_DIR}/$1.conf
+	if [ -f ${conf_file} ]; then
+            CLUSTER_NAME=$1
+        else
+	    echo "Error,cluster name: $1 error or ${conf_file} doesn't exits!"
+	    print_usage
+	    exit -1
+	fi
+     fi	
+    if [ -d $2 ]; then
+	#ensure the mountpoint is end with '/'
+	var=$2
+	last_letter=`echo ${var:((${#var} - 1))}`
+	if [ $last_letter != "/" ];then
+	    MOUNT_PATH=$2/
+	else
+	    MOUNT_PATH=$2
+	fi
+	
+    else
+	echo "Error, mountpoint $2 doesn't exist!"
+	exit -1
+    fi
+}
+
+function write_service() {
+cat > "${SERVICE_DIR}/$1" << EOF
+[Unit]
+Description= ANNA Client service
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/bin/docker start -a ${CLIENT_NAME}
+Restart=on-failure
+StartLimitInterval=30min
+StartLimitBurst=3
+ExecStop=/usr/bin/docker stop ${CLIENT_NAME}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+Hash(){
+    if [ "$#" -ne "2" ]; then
+        echo "Hash Wrong Paramenters!" >&2
+        return 1
+    fi
+    string=$1
+    length=`echo $string|awk '{printf("%d", length($0))}'`
+    if [ "$length" -eq "0" ]; then
+        echo "Hash: At least one letter should be input!" >&2
+        return 1
+    fi
+    iCount=1
+    letterSum=0
+    while [ "$iCount" -le "$length" ]  
+    do
+        letterCur=`expr substr $string $iCount 1`
+        letterNumCur=`printf "%d" "'$letterCur"`
+        letterNumCur=`expr $letterNumCur \* $letterNumCur`
+        #echo "$letterCur $letterNumCur"  
+        letterSum=`expr $letterSum + $letterNumCur`
+        iCount=`expr $iCount + 1`
+    done
+    letterSum=`expr $letterSum / $2`
+    echo $letterSum  
+    return 0
+}    
+
+function do_mount() {
+    # judge if the client exist already
+    if [ ! -e $CLIENT_FILE ];then
+	touch ${CLIENT_FILE}
+    fi
+
+    #create client name
+    mount_path=`echo ${MOUNT_PATH//\//\-}`
+    num=`Hash $mount_path 1`
+    CLIENT_NAME="anna-fuse-${num}"
+    #echo $mount_path $CLIENT_NAME
+    
+    if [ `grep -c ${CLIENT_NAME}_client  ${CLIENT_FILE}` -gt '0' ]; then
+	echo "create error: the client $CLIENT_NAME exist already!"
+	exit 1
+    fi
+
+    #start mkdir 
+    #mkdir CRASH_DIR
+    if [ ! -d "$CRASH_DIR" ];then
+	mkdir -p $CRASH_DIR
+    fi
+
+    #mkdir LOG_DIR
+    if [ ! -d "$LOG_DIR" ];then
+	mkdir -p $LOG_DIR
+    fi
+    
+    #mkdir VAR_RUN_DIR
+    if [ ! -d "$VAR_RUN_DIR" ];then
+	mkdir -p $VAR_RUN_DIR
+    fi
+  
+    # create the docker 
+    docker create -v ${CONF_DIR}:${CONF_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME}  anna-client > /dev/null 2>&1
+
+    if [ $? -ne 0 ]; then
+	docker rm -f ${CLIENT_NAME} > /dev/null 2>&1
+	exit 1
+    else
+	echo "Create successfully for ${CLIENT_NAME}"
+    fi
+    
+    #generate client service
+    service_name=${CLIENT_NAME}.service
+    write_service $service_name
+ 
+    # enable the service
+    systemctl enable ${service_name} > /dev/null 2>&1
+  
+    if [ $? -eq 0 ]; then
+	if [ `grep -c ${CLIENT_NAME}_client  ${CLIENT_FILE}` -eq '0' ]; then
+	    echo ${CLIENT_NAME}_client:${MOUNT_PATH} >> $CLIENT_FILE
+	fi
+    else 
+	docker rm -f ${CLIENT_NAME} > /dev/null 2>&1
+	rm -rf ${SERVICE_DIR}/${service_name}
+	exit 1
+    fi
+
+    systemctl start ${CLIENT_NAME}
+    if [ $? -eq 0 ]; then
+	echo "Start successfully for ${CLIENT_NAME}"
+    fi
+ 
+    echo "Mount success"
+}
+
+function main() {
+  parse_arguments $@
+  do_mount 
+}
+
+main $@
+
+

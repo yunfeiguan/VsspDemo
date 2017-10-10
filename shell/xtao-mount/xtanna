@@ -1,0 +1,280 @@
+#!/bin/bash
+
+# Initialize script globals
+COMMAND_OP=
+MOUNT_PATH=
+CLIENT_NAME=
+OP_ALL=
+
+CLUSTER="xtao"
+CLIENT_FILE="/etc/ceph/.clients"
+CONF_DIR="/etc/ceph"
+CRASH_DIR="/var/crash"
+LOG_DIR="/var/log/ceph"
+VAR_RUN_DIR="/var/run/ceph"
+SERVICE_DIR="/usr/lib/systemd/system"
+
+function usage () {
+        cat <<EOF
+
+Usage: $0 <command> [client-name] [mountpoint] [options ...] 
+  <command>:
+    create                   Create a anna client and mount it to storage
+    list                      List all anna clinets 
+    start                    Start a anna client
+    stop                     Stop a anna client 
+    destroy [client-name | all]      Destroy anna client
+
+  [options]
+    --help                     Show this help message and exit
+    --cluster=cluster_name The name of cluster
+
+  example:
+    $0 create anna-fuse /mnt/annaVol/
+    $0 start anna-fuse
+    $0 stop anna-fuse
+    $0 destroy anna-fuse
+
+EOF
+        exit 1
+}
+
+parse_options() {
+  for arg do
+    # # the parameter after "=", or the whole $arg if no match
+    # val=$(echo "$arg" | sed -e 's/^--[^=]*=//;;')
+    # # what's before "=", or the whole $arg if no match
+    # #optname=$(echo "$arg" | sed 's#^\(--[^=]*\)=.*$#\1#')
+    # optname=$(echo "$arg" | sed -e 's#^--[^=]*=.*$#\1#')
+    # # replace "_" by "-" ; mysqld_safe must accept "_" like mysqld does.
+    # optname_subst=`echo "$optname" | sed 's/_/-/g'`
+    # arg=`echo $arg | sed "s#^$optname#$optname_subst#"`
+  
+    
+    if [[ ${arg:0:2} = "--" ]]; then
+       key=$(echo $arg | awk -F '=' '{print $1}')
+       val=$(echo $arg | awk -F '=' '{print $2}')
+
+       case "$key" in
+         --cluster=*) CLUSTER="$val" ;;
+        --help) usage ;;
+        *)
+      esac	
+    fi
+    
+  done
+}
+
+function parse_arguments() {
+   if [ $# -ge 2 ]; then
+      case $1 in
+      	 create)
+	   COMMAND_OP="create"
+	   CLIENT_NAME=$2
+	   if [ -n $3 ]; then
+	     MOUNT_PATH=$3 
+           else
+	     echo "command error: Incomplete command"
+           fi ;;
+	 start)
+	   COMMAND_OP="start" 
+	   CLIENT_NAME=$2 ;;	 
+         stop)
+	   CLIENT_NAME=$2
+	   COMMAND_OP="stop" ;;
+         destroy)
+	   COMMAND_OP="destroy" 
+	   if [ "$2" = "all" ]; then
+	      OP_ALL=ture
+           else
+  	     CLIENT_NAME=$2
+	   fi ;;
+	 *)
+	   echo "command error: Invalidate command \"$1\"" 
+	   usage
+	   exit 2 ;;
+     esac
+     
+   else
+     if [ $1 = "list" ]; then
+     	COMMAND_OP="list" 
+     elif [ $1 == "--help" ]; then
+     	 echo ""
+     	 echo "help message:"
+     else
+       echo "command error::  Incomplete command"
+       usage
+     fi
+   fi
+
+   parse_options $@
+}
+
+function write_service() {
+cat > "${SERVICE_DIR}/$1" << EOF
+[Unit]
+Description= ANNA Client service
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/bin/docker start -a ${CLIENT_NAME}
+Restart=on-failure
+StartLimitInterval=30min
+StartLimitBurst=3
+ExecStop=/usr/bin/docker stop ${CLIENT_NAME}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+function list_client() {
+  if [ -e $CLIENT_FILE ]; then
+    echo "all clients:"
+    cat $CLIENT_FILE | awk -F ':' '{print $1}' | awk -F '_' '{print $1}'
+  fi
+}
+function create_client() {
+  # judge if the clinet exist already
+  if [ ! -e $CLIENT_FILE ];then
+    touch ${CLIENT_FILE}
+  fi
+
+  if [ `grep -c ${CLIENT_NAME}_client  ${CLIENT_FILE}` -gt '0' ]; then
+    echo "create error: the client $CLIENT_NAME exist already!"
+    exit 1
+  fi
+  
+  #mkdir CONF_DIR
+  if [ ! -d "$CONF_DIR" ];then
+     mkdir -p $CRASH_DIR
+  fi
+
+  #mkdir CRASH_DIR
+  if [ ! -d "$CRASH_DIR" ];then
+     mkdir -p $CRASH_DIR
+  fi
+
+  #mkdir LOG_DIR
+  if [ ! -d "$LOG_DIR" ];then
+     mkdir -p $LOG_DIR
+  fi
+
+  #mkdir VAR_RUN_DIR
+  if [ ! -d "$VAR_RUN_DIR" ];then
+     mkdir -p $VAR_RUN_DIR
+  fi
+  
+  #mkdir MOUNT_DIR
+  if [ ! -d "${MOUNT_PATH}" ]; then
+    mkdir -p $MOUNT_PATH
+    if [ $? -ne 0 ]; then
+       exit 1
+    fi
+  fi
+
+  # create the docker 
+  docker create -v ${CONF_DIR}:${CONF_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER}  anna-client > /dev/null 2>&1
+
+  #docker create --name ${CLIENT_NAME} anna-client -v ${CONF_DIR}:${CONF_DIR}:shared
+  
+  if [ $? -ne 0 ]; then
+    docker rm -f ${CLIENT_NAME} > /dev/null 2>&1
+    exit 1
+  fi
+
+  #generate client service
+  service_name=${CLIENT_NAME}.service
+  write_service $service_name
+ 
+  # enable the service
+  systemctl enable ${service_name} > /dev/null 2>&1
+  
+  if [ $? -eq 0 ]; then
+    if [ `grep -c ${CLIENT_NAME}_client  ${CLIENT_FILE}` -eq '0' ]; then
+      echo ${CLIENT_NAME}_client:${MOUNT_PATH} >> $CLIENT_FILE
+    fi
+  else 
+    docker rm -f ${CLIENT_NAME} > /dev/null 2>&1
+    rm -rf ${SERVICE_DIR}/${service_name}
+  fi
+  
+  echo "Create successfully for ${CLIENT_NAME}"
+  start_client
+}
+
+function start_client() {
+  if [ ! -e ${CONF_DIR}/${CLUSTER}.conf ]; then
+    echo "config error: lack of cluster config file"
+    exit 1
+  fi
+  systemctl start ${CLIENT_NAME}
+  if [ $? -eq 0 ]; then
+    echo "Start successfuly for ${CLIENT_NAME}"
+  fi
+}
+
+function stop_client() {
+  systemctl stop ${CLIENT_NAME}
+  #umount -l ${MOUNT_PATH}
+}
+
+function do_destroy() {
+  #stop_client
+  client_name=$1
+  service_name=${client_name}.service
+  systemctl disable $service_name > /dev/null 2>&1
+  rm -rf ${SERVICE_DIR}/$service_name
+  
+  docker ps -a | grep $client_name
+  
+  if [ $? -eq 0 ]; then
+      docker rm -f ${client_name} > /dev/null 2>&1
+  fi
+  
+  if [ $? -eq 0 ]; then
+    sed -i "/${client_name}_client/d" ${CLIENT_FILE}
+    echo "Destroy success for ${client_name}"
+  fi
+  
+  umount -l $2 > /dev/null 2>&1
+}
+
+function destroy_client() {
+  if [ -z $OP_ALL ]; then  
+    mount_path=$(cat ${CLIENT_FILE} | grep ${CLIENT_NAME}_client | awk -F ':' '{print $2}')
+    do_destroy ${CLIENT_NAME} $mount_path
+  elif [ "$OP_ALL" = "ture" ]; then
+    while read clientstr
+    do 
+       #echo $clientstr
+       client=`echo ${clientstr} | awk -F ':' '{print $1}' | awk -F '_' '{print $1}'`
+       mount_path=`echo ${clientstr} | awk -F ':' '{print $2}'`
+       do_destroy ${client} ${mount_path}
+    done < ${CLIENT_FILE}
+  fi
+}
+function do_op() {
+  case $COMMAND_OP in
+    create) create_client ;; 
+    list) list_client ;;
+    start) start_client ;;
+    stop) stop_client ;;
+    destroy) destroy_client ;;
+    *) 
+      echo "error: may be a command error"
+  esac
+}
+
+function main() {
+  if [ $# -lt 1 ]; then
+    usage
+  fi
+  
+  parse_arguments $@
+  
+  do_op
+}
+
+main $@
