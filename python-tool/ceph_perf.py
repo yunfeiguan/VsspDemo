@@ -33,7 +33,7 @@ while var == 1:
     else:
         read_bw=0
 
-    out_str = "write op:%-6d write_bw:%-9d read_op:%6d read_bw:%-9d" %(write_op, write_bw, read_op, read_bw)
+    out_str = "write op:%-6d write_bw:%5d M/s read_op:%6d read_bw:%5d M/s" %(write_op, write_bw/1024/1024, read_op, read_bw/1024/1024)
     print out_str 
     #msvcrt.printf('%s,%-6d,%s,%-11d,%s,%-6d,%s,%-11d','write op:',write_op,'write dw:',write_bw,'read_op:',read_op,'read_bw:',read_bw)
     time.sleep(1)
