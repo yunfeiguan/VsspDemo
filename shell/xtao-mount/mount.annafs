@@ -5,7 +5,8 @@ CLIENT_NAME=
 
 CLUSTER_NAME="xtao"
 CLIENT_FILE="/etc/ceph/.clients"
-CONF_DIR="/etc/ceph"
+CONF_DIR="/etc/annac"
+CONF_DOCKER_DIR="/etc/ceph"
 CRASH_DIR="/var/crash"
 LOG_DIR="/var/log/ceph"
 VAR_RUN_DIR="/var/run/ceph"
@@ -165,7 +166,7 @@ function do_mount() {
     fi
   
     # create the docker 
-    docker create -v ${CONF_DIR}:${CONF_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME}  anna-client > /dev/null 2>&1
+    docker create -v ${CONF_DIR}:${CONF_DOCKER_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME}  anna-client > /dev/null 2>&1
 
     if [ $? -ne 0 ]; then
 	docker rm -f ${CLIENT_NAME} > /dev/null 2>&1

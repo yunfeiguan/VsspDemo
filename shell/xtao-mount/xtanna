@@ -8,7 +8,8 @@ OP_ALL=
 
 CLUSTER="xtao"
 CLIENT_FILE="/etc/ceph/.clients"
-CONF_DIR="/etc/ceph"
+CONF_DIR="/etc/annac"
+CONF_DOCKER_DIR="/etc/ceph"
 CRASH_DIR="/var/crash"
 LOG_DIR="/var/log/ceph"
 VAR_RUN_DIR="/var/run/ceph"
@@ -132,7 +133,15 @@ EOF
 function list_client() {
   if [ -e $CLIENT_FILE ]; then
     echo "all clients:"
-    cat $CLIENT_FILE | awk -F ':' '{print $1}' | awk -F '_' '{print $1}'
+    #cat $CLIENT_FILE | awk -F ':' '{print $1}' | awk -F '_' '{print $1}' 
+    #cat $CLIENT_FILE
+    while read clientstr
+    do
+	client_name=`echo $clientstr | awk -F ':' '{print $1}' | awk -F '_' '{print $1}'`
+        mount_path=`echo $clientstr | awk -F ':' '{print $2}'`
+        echo "$client_name  $mount_path"
+        
+    done < ${CLIENT_FILE}
   fi
 }
 function create_client() {
@@ -175,7 +184,7 @@ function create_client() {
   fi
 
   # create the docker 
-  docker create -v ${CONF_DIR}:${CONF_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER}  anna-client > /dev/null 2>&1
+  docker create -v ${CONF_DIR}:${CONF_DOCKER_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --privileged=true  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER}  anna-client > /dev/null 2>&1
 
   #docker create --name ${CLIENT_NAME} anna-client -v ${CONF_DIR}:${CONF_DIR}:shared
   
