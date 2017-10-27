@@ -16,6 +16,6 @@ echo $oid
 
 #get omapheader 
 rados -p cephfs_metadata getomapheader $oid /tmp/kkkkk --cluster xtao
-ceph-dencoder import /tmp/kk type fnode_t  decode dump_json 
+ceph-dencoder import /tmp/kkkkk type fnode_t  decode dump_json 
 
 rm -rf /tmp/kkkkk
