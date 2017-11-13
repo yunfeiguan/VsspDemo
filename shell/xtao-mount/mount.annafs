@@ -5,7 +5,7 @@ CLIENT_NAME=
 
 CLUSTER_NAME="xtao"
 CLIENT_FILE="/etc/ceph/.clients"
-CONF_DIR="/etc/annac"
+CONF_DIR="/etc/ceph"
 CONF_DOCKER_DIR="/etc/ceph"
 CRASH_DIR="/var/crash"
 LOG_DIR="/var/log/ceph"
@@ -20,7 +20,8 @@ Usage: $0  <cluster-name> <mountpoint>
 
 example:
     $0 xtao /mnt/annaVol/
-    mount -t annafs xtao /mnt/annaVol/
+    mount -t annafs annac:xtao /mnt/annaVol/    mount the remote anna storage
+    mount -t annafs xtao /mnt/annaVol/          mount compute node anna storage
 EOF
 }
 
@@ -59,11 +60,23 @@ function parse_arguments() {
 	echo "Error,It needs a cluster neme instead of a ip address!"
 	print_usage
 	exit -1
-    else 
-	conf_file=${CONF_DIR}/$1.conf
-	if [ -f ${conf_file} ]; then
-            CLUSTER_NAME=$1
+    else
+        result=$(echo $1 | grep ":")
+        if [[ "$result" != "" ]]
+        then
+            mount_type=`echo $1 | cut -d \: -f 1`
+            cluster_name=`echo $1 | cut -d \: -f 2`
+            if [ $mount_type != "annac" ];then
+	    	echo "Error, conf path : $mount_type error!"
+	    	exit -1
+            fi
+            CONF_DIR="/etc/annac"
+            CLUSTER_NAME=$cluster_name
         else
+            CLUSTER_NAME=$1
+        fi
+	conf_file=${CONF_DIR}/${CLUSTER_NAME}.conf
+	if [ ! -f ${conf_file} ]; then
 	    echo "Error,cluster name: $1 error or ${conf_file} doesn't exits!"
 	    print_usage
 	    exit -1
@@ -164,7 +177,8 @@ function do_mount() {
     if [ ! -d "$VAR_RUN_DIR" ];then
 	mkdir -p $VAR_RUN_DIR
     fi
-  
+     
+    #echo $CONF_DIR  
     # create the docker 
     docker create -v ${CONF_DIR}:${CONF_DOCKER_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --pid=host --privileged  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME}  anna-client > /dev/null 2>&1
 
@@ -204,4 +218,5 @@ function main() {
   do_mount 
 }
 
+#echo $@
 main $@
