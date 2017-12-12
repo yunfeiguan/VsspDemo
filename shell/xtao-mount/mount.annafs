@@ -107,9 +107,9 @@ Requires=docker.service
 
 [Service]
 ExecStart=/usr/bin/docker start -a ${CLIENT_NAME}
-Restart=on-failure
-StartLimitInterval=30min
-StartLimitBurst=3
+Restart=always
+StartLimitInterval=0
+StartLimitBurst=20
 ExecStop=/usr/bin/docker stop ${CLIENT_NAME}
 
 [Install]
@@ -180,7 +180,7 @@ function do_mount() {
      
     #echo $CONF_DIR  
     # create the docker 
-    docker create -v ${CONF_DIR}:${CONF_DOCKER_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --pid=host --privileged  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME}  anna-client > /dev/null 2>&1
+    docker create -v ${CONF_DIR}:${CONF_DOCKER_DIR} -v ${CRASH_DIR}:${CRASH_DIR}  -v ${LOG_DIR}:${LOG_DIR}  -v ${VAR_RUN_DIR}:${VAR_RUN_DIR} -v ${MOUNT_PATH}:${MOUNT_PATH}:shared --cap-add SYS_ADMIN --device /dev/fuse --name ${CLIENT_NAME}  --net=host --pid=host --privileged  -e MOUNT_PATH=${MOUNT_PATH} -e CLUSTER=${CLUSTER_NAME} -e ID=${num} anna-client > /dev/null 2>&1
 
     if [ $? -ne 0 ]; then
 	docker rm -f ${CLIENT_NAME} > /dev/null 2>&1
