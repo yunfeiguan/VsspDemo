@@ -106,6 +106,7 @@ After=docker.service
 Requires=docker.service
 
 [Service]
+ExecStartPre=/usr/bin/sh -c "if [ ! -d ${MOUNT_PATH} ]; then /usr/bin/umount -l ${MOUNT_PATH}; fi"
 ExecStart=/usr/bin/docker start -a ${CLIENT_NAME}
 Restart=always
 StartLimitInterval=0
