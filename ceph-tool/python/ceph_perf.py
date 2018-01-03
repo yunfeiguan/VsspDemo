@@ -3,8 +3,30 @@ import os
 import json
 import commands
 import time
+import sys,getopt
+from datetime import datetime
 
-msvcrt = CDLL("libc.so.6")
+#profile cycle 
+cycle=2
+
+debug=0
+output_file=" "
+
+opts, args = getopt.getopt(sys.argv[1:], "hdt:o:")
+
+for op, value in opts:
+    if op == "-t":
+        cycle=value
+    elif op == "-o":
+        output_file = value
+    elif op == "-d":
+        debug=1
+    elif op == "-h":
+        print "Usage:"
+        print "    python %s -t time_cycle [-o output_file][-h][-d]" %(sys.argv[0])
+        sys.exit()
+
+collect_num=0
 var = 1
 while var == 1:
     status,output = commands.getstatusoutput('ceph status -f json --cluster xtao  --debug-monc=0 --debug-client=0 --debug-rados=0 --debug-objecter=0')
@@ -35,9 +57,15 @@ while var == 1:
 
     out_str = "write op:%-6d write_bw:%5d M/s read_op:%6d read_bw:%5d M/s" %(write_op, write_bw/1024/1024, read_op, read_bw/1024/1024)
     print out_str 
-    #msvcrt.printf('%s,%-6d,%s,%-11d,%s,%-6d,%s,%-11d','write op:',write_op,'write dw:',write_bw,'read_op:',read_op,'read_bw:',read_bw)
+    
+    if (output_file != " "):
+        commands.getstatusoutput('echo {0} {1} {2} | tee -a {3}'.format(collect_num, datetime.now(), out_str, output_file))
+    if (collect_num == 0):
+        collect_num += 1
+        continue
     time.sleep(1)
-
+    collect_num += 1
+    
 #read_bw=json_format['pgmap']['num_pgs']
 #import pdb;pdb.set_trace()
 #print output
