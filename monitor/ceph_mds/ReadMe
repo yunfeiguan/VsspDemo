@@ -1,0 +1,39 @@
+代码路径：
+/usr/share/diamond/collectors
+配置文件：
+/etc/diamond/diamond.conf
+/etc/diamond/collectors/CephCollector.conf
+interval = 60
+
+carbon配置：
+docker exec -ti graphite /bin/bash
+/etc/carbon/storage-schemas.conf
+retentions = 5:90d
+[default_1min_for_1day]
+pattern = .*
+retentions = 5s:15d
+debug手段：
+diamond -f -l -r /usr/share/diamond/collectors/ceph_mds/ceph_mds.py -c /etc/diamond/diamond.conf
+
+clamari 难点讲解：
+该程序最大的难点在于publish的使用
+publish_counter:  这个用于记录counter类型的技术，虽然每次你给的总值，但是每次算的都是delta值，所以web界面显示delta的时候要用这个函数
+publish_gauge：这个用于记录总值的，也就是可以看一个数的总值的变化趋势
+_publish_longrunavg：计算固定周期内某个参数的总时间，总个数，平均时间，最后调用publish_gauge函数发送
+
+
+结果：
+/var/lib/carbon/
+
+相关文档：https://zphj1987.gitbooks.io/calamaribook/content/second/an_zhuang_calamari_-_server.html
+访问方式：
+http://10.61.53.201:8000/
+http://10.61.53.201:8000/stats
+账号密码admin/admin1
+添加一个collector的步奏：
+#Create /usr/share/diamond/collectors/zfsarccollector directory and copy this plugin to it.
+mkdir /usr/share/diamond/collectors/example
+touch /usr/share/diamond/collectors/example/example.py
+Create config file /etc/diamond/collectors/ExampleCollector.conf with content:
+enabled=True
+
