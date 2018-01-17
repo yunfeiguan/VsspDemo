@@ -125,8 +125,8 @@ class CephMdsCollector(diamond.collector.Collector):
         self.config['service_stats_global'] = str_to_bool(self.config['service_stats_global'])
         self.config['perf_counters_enabled'] = str_to_bool(self.config['perf_counters_enabled'])
         self.config['long_running_detail'] = str_to_bool(self.config['long_running_detail'])
-	self.profile_times = int(self.config['profile_times'])
-	self.profile_period = int(self.config['profile_period'])
+        self.profile_times = int(self.config['profile_times'])
+        self.profile_period = int(self.config['profile_period'])
 
     def get_default_config_help(self):
         config_help = super(CephMdsCollector, self).get_default_config_help()
@@ -290,7 +290,7 @@ class CephMdsCollector(diamond.collector.Collector):
             result.append((new_name, new_value))
         return result
 
-    def _publish_stats(self, counter_prefix, stats, schema, name_class):
+    def _publish_stats(self, counter_prefix, stats, schema, name_class, interval=0):
         """Publish a set of Ceph performance counters, including schema.
 
         :param counter_prefix: string prefixed to metric names
@@ -327,7 +327,7 @@ class CephMdsCollector(diamond.collector.Collector):
 
                     for name, value in values:
                         if stat_type & _PERFCOUNTER_COUNTER:
-                            self.publish_counter(name, value, 2)
+                            self.publish_counter(name, value, 2, 0, True, interval)
                         else:
                             self.publish_gauge(name, value, 2)
                 else:
@@ -341,12 +341,13 @@ class CephMdsCollector(diamond.collector.Collector):
         else:
             return fsid
 
-    def _publish_cluster_stats(self, cluster_name, fsid, prefix, stats, counter=False):
+    def _publish_cluster_stats(self, cluster_name, fsid, prefix, stats, counter=False, interval=0):
         """
         Given a stats dictionary, publish under the cluster path (respecting
         short_names and cluster_prefix)
         """
 
+        #self.log.debug("oooooo:%s" % stats)
         for stat_name, stat_value in flatten_dictionary(
             stats,
             path=[self._cluster_id_prefix(cluster_name, fsid), prefix]
@@ -354,9 +355,10 @@ class CephMdsCollector(diamond.collector.Collector):
             stat_name = _PATH_SEP.join(stat_name)
             name = GlobalName(stat_name)
             if counter:
-                self.publish_counter(name, stat_value)
+                self.log.debug("ooooo name:%s, xxxx stat_value:%s" %(name, stat_value))
+                self.publish_counter(name, stat_value, 2, 0, True, interval)
             else:
-                self.publish_gauge(name, stat_value)
+                self.publish_gauge(name, stat_value, 2)
 
     def _admin_command(self, socket_path, command):
         try:
@@ -418,19 +420,26 @@ class CephMdsCollector(diamond.collector.Collector):
 
         def publish_pool_stats(pool_id, stats):
             # Some of these guys we treat as counters, some as gauges
-            delta_fields = ['num_read', 'num_write']
-            #delta_fields = ['num_read', 'num_read_kb', 'num_write', 'num_write_kb', 'num_objects_recovered',
-            #                'num_bytes_recovered', 'num_keys_recovered']
+            delta_fields = []
+            #delta_fields = ['num_read', 'num_write']
+            delta_fields = ['num_read', 'num_read_kb', 'num_write', 'num_write_kb', 'num_objects_recovered',
+                            'num_bytes_recovered', 'num_keys_recovered']
+            self.log.info(stats)
             for k, v in stats.items():
+                if k == 'num_read':
+                    self.log.debug("-----------  num read '%s':'%s'" % (k,v))
+                if k == 'num_write':
+                    self.log.debug("-----------  num wrte '%s':'%s'" % (k, v))
+                #import pdb;pdb.set_trace()
                 self._publish_cluster_stats(cluster_name, fsid, "pool.{0}".format(pool_id), {k: v},
-                                            counter=k in delta_fields)
+                                            counter=k in delta_fields, interval=self.profile_period)
 
         # Gather "ceph pg dump pools" and file the stats by pool
-        for pool in self._mon_command(cluster_name, ['pg', 'dump', 'pools']):
-            publish_pool_stats(pool['poolid'], pool['stat_sum'])
+        #for pool in self._mon_command(cluster_name, ['pg', 'dump', 'pools']):
+        #    publish_pool_stats(pool['poolid'], pool['stat_sum'])
 
-        #all_pools_stats = self._mon_command(cluster_name, ['pg', 'dump', 'summary'])['pg_stats_sum']['stat_sum']
-        all_pools_stats = self._mon_command(cluster_name, ['pg', 'dump', 'summary'])['pg_stats_delta']['stat_sum']
+        all_pools_stats = self._mon_command(cluster_name, ['pg', 'dump', 'summary'])['pg_stats_sum']['stat_sum']
+        #all_pools_stats = self._mon_command(cluster_name, ['pg', 'dump', 'summary'])['pg_stats_delta']['stat_sum']
         #import pdb;pdb.set_trace()
         publish_pool_stats('all', all_pools_stats)
 
@@ -440,13 +449,12 @@ class CephMdsCollector(diamond.collector.Collector):
 
         # Gather "cephfs journal header"
         self.log.debug("starting gather cephfs mds journal")
-        header_delta_fields = ['ad_release_pos', 'trimmed_pos']
+        header_delta_fields = ['ad_release_pos']
         header = self._local_command(cluster_name, ['header', 'get'])
         del header['layout']
         del header['magic']
-
         for k, v in header.items():
-            self._publish_cluster_stats(cluster_name, fsid, "header", {k: v}, counter=k in header_delta_fields)
+            self._publish_cluster_stats(cluster_name, fsid, "header", {k: v}, counter=k in header_delta_fields, interval=self.profile_period)
 
     def _get_perf_counters(self, name):
         """Return perf counters and schema from admin socket.
@@ -474,11 +482,11 @@ class CephMdsCollector(diamond.collector.Collector):
         stats, schema = self._get_perf_counters(path)
         if self.config['service_stats_global']:
             counter_prefix = "{0}.{1}.{2}".format(self._cluster_id_prefix(cluster_name, fsid), service_type, service_id)
-            self._publish_stats(counter_prefix, stats, schema, GlobalName)
+            self._publish_stats(counter_prefix, stats, schema, GlobalName, self.profile_period)
         else:
             # The prefix is <cluster name>.<service type>.<service id>
             counter_prefix = "{0}.{1}.{2}".format(cluster_name, service_type, service_id)
-            self._publish_stats(counter_prefix, stats, schema, LocalName)
+            self._publish_stats(counter_prefix, stats, schema, LocalName, self.profile_period)
         
     def collect(self):
         """
