@@ -1,0 +1,5 @@
+this mainly resolve ceph fuse client hang and report "waiting for caps need ..." by touching the file work aroudly.
+
+timer.sh -- ensure check_wating.sh can run all the time.
+check_waiting.sh -- checking xtao.log added one "waiting for" log.
+waiting_for_cap.py -- repaire the file which client blocked.
