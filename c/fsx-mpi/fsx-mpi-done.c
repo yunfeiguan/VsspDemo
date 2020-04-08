@@ -80,7 +80,7 @@ int rank;
 
 struct log_entry {
 	  int	operation;
-	  int	args[4];
+	  int	args[3];
 };
 
 #define	LOGSIZE	1000
@@ -107,7 +107,7 @@ int page_mask;
 char	*original_buf;			/* a pointer to the original data */
 char	*good_buf;			/* a pointer to the correct data */
 char	*temp_buf;			/* a pointer to the current data */
-char *temp_buf2;
+char    *align_buf;			//jwd add , for domapread
 char	*fname;				/* name of our test file */
 int	fd;				/* fd for our test file */
 
@@ -203,31 +203,12 @@ log4(int operation, int arg0, int arg1, int arg2)
    le->args[0] = arg0;
    le->args[1] = arg1;
    le->args[2] = arg2;
-   
    logptr++;
    logcount++;
    if (logptr >= LOGSIZE)
 	  logptr = 0;
 }
 
-void
-my_log4(int operation, int arg0, int arg1, int arg2, int arg3)
-{
-   struct log_entry *le;
-
-   le = &oplog[logptr];
-   le->operation = operation;
-   if (closeopen)
-	  le->operation = ~ le->operation;
-   le->args[0] = arg0;
-   le->args[1] = arg1;
-   le->args[2] = arg2;
-   le->args[3] = arg3;
-   logptr++;
-   logcount++;
-   if (logptr >= LOGSIZE)
-	  logptr = 0;
-}
 
 void
 logdump(void)
@@ -270,17 +251,17 @@ logdump(void)
 			   prt("\t******WWWW");
 			break;
 		 case OP_READ:
-			prt("READ\t%ld \t thru %ld\t(%ld bytes)  my_rank:%d",
+			prt("READ\t0x%x thru 0x%x\t(0x%x bytes)",
 			    lp->args[0], lp->args[0] + lp->args[1] - 1,
-			    lp->args[1], lp->args[3]);
+			    lp->args[1]);
 			if (badoff >= lp->args[0] &&
 			    badoff < lp->args[0] + lp->args[1])
 			   prt("\t***RRRR***");
 			break;
 		 case OP_WRITE:
-			prt("WRITE\t%ld \t thru %ld\t(%ld bytes)  my_rank:%d",
+			prt("WRITE\t0x%x thru 0x%x\t(0x%x bytes)",
 			    lp->args[0], lp->args[0] + lp->args[1] - 1,
-			    lp->args[1], lp->args[3]);
+			    lp->args[1]);
 			if (lp->args[0] > lp->args[2])
 			   prt(" HOLE");
 			else if (lp->args[0] + lp->args[1] > lp->args[2])
@@ -383,24 +364,21 @@ check_buffers(unsigned offset, unsigned size)
    unsigned n = 0;
    unsigned op = 0;
    unsigned bad = 0;
-   unsigned offset_my = offset;
+
    if (memcmp(good_buf + offset, temp_buf, size) != 0) {
-	  prt("READ BAD DATA: offset = %ld, size = %ld\n",
+	  prt("READ BAD DATA: offset = 0x%x, size = 0x%x\n",
 		  offset, size);
-	  prt("OFFSET\tGOOD\tBAD\n");
+	  prt("OFFSET\tGOOD\tBAD\tRANGE\n");
 	  while (size > 0) {
 		 c = good_buf[offset];
 		 t = temp_buf[i];
 		 if (c != t) {
 			if (n == 0) {
 			   bad = short_at(&temp_buf[i]);
-			   prt("0x%5x\t0x%04x\t0x%04x\n", offset,
+			   prt("0x%5x\t0x%04x\t0x%04x", offset,
 				   short_at(&good_buf[offset]), bad);
 			   op = temp_buf[offset & 1 ? i+1 : i];
 			}
-			if (n<10) // only print 10 records 
-				prt("good_buf[0x%5x]: 0x%x \t\t temp_buf[%d]: 0x%x \n",
-				    offset, good_buf[offset], i, temp_buf[i]);
 			n++;
 			badoff = offset;
 		 }
@@ -409,47 +387,13 @@ check_buffers(unsigned offset, unsigned size)
 		 size--;
 	  }
 	  if (n) {
-		 prt("RANGE:  0x%5x\n", n);
+		 prt("\t0x%5x\n", n);
 		 if (bad)
 			prt("operation# (mod 256) for the bad data may be %u\n", ((unsigned)op & 0xff));
 		 else
 			prt("operation# (mod 256) for the bad data unknown, check HOLE and EXTEND ops\n");
 	  } else
 		 prt("????????????????\n");
-	 
-	   if (offset_my == 102834176) {
-		   offset = offset_my;
-		   size = 81920;
-		   i = 0;
-		   if (memcmp(temp_buf, temp_buf2, 81920) != 0) {
-			  prt("READ BAD DATA: offset = %ld, size = %ld\n",
-			      offset, size);
-			  prt("OFFSET\tGOOD\tBAD\n");
-			  while (size > 0) {
-				  c = temp_buf[i];
-				  t = temp_buf2[i];
-				  if (c != t) {
-					  if (n<10) // only print 10 records 
-						  prt("temp_buf[%d]: 0x%x \t\t temp_buf2[%d]: 0x%x \n",
-						      i, temp_buf[i], i, temp_buf2[i]);
-					  n++;
-				  } else {
-					  prt("the same temp_buf[0x%d]: 0x%x \t\t temp_buf2[%d]: 0x%x \n",
-				  		      i, temp_buf[i], i, temp_buf2[i]);
-				  }
-				  offset++;
-				  i++;
-				  size--;
-			  }
-		  }
-		   else {
-			   prt("READ GOOD DATA: offset = %d, size = %ld/n", offset ,size);
-			  for (i=0; i++; i<=10){
-				  prt("temp_buf[0x%d]: 0x%x \t\t temp_buf2[%d]: 0x%x \n",
-				  		      i, temp_buf[i], i, temp_buf2[i]);
-			  }
-		   }
-	   }
 	  report_failure(110);
    }
 }
@@ -501,17 +445,17 @@ doread(unsigned offset, unsigned size)
    if (size == 0) {
 	  if (!quiet && testcalls > simulatedopcount)
 		 prt("skipping zero size read\n");
-	  my_log4(OP_SKIPPED, OP_READ, offset, size, rank);
+	  log4(OP_SKIPPED, OP_READ, offset, size);
 	  return;
    }
    if (size + offset > file_size) {
 	  if (!quiet && testcalls > simulatedopcount)
 		 prt("skipping seek/read past end of file\n");
-	  my_log4(OP_SKIPPED, OP_READ, offset, size, rank);
+	  log4(OP_SKIPPED, OP_READ, offset, size);
 	  return;
    }
 
-   my_log4(OP_READ, offset, size, 0, rank);
+   log4(OP_READ, offset, size, 0);
 
    if (testcalls <= simulatedopcount)
 	  return;
@@ -524,15 +468,12 @@ doread(unsigned offset, unsigned size)
 					 (monitorend == -1 || offset <= monitorend))))))
 	  prt("%lu read\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		  offset, offset + size - 1, size);
-   /*ret = lseek(fd, (off_t)offset, SEEK_SET);
+   ret = lseek(fd, (off_t)offset, SEEK_SET);
    if (ret == (off_t)-1) {
 	  prterr("doread: lseek");
 	  report_failure(140);
-	  }*/
-   prt("%lu read\t0x%x thru\t0x%x\t(0x%x bytes) my_rank=%d\n", testcalls,
-		  offset, offset + size - 1, size, rank);
-   //iret = read(fd, temp_buf, size);
-   iret = pread(fd, temp_buf, size, offset);
+   }
+   iret = read(fd, temp_buf, size);
    if (iret != size) {
 	  if (iret == -1)
 		 prterr("doread: read");
@@ -541,8 +482,6 @@ doread(unsigned offset, unsigned size)
 			 iret, size);
 	  report_failure(141);
    }
-   if (offset == 102785024)
-	   memcpy(temp_buf2, temp_buf+46960, 81920);
    check_buffers(offset, size);
 }
 
@@ -617,8 +556,13 @@ domapread(unsigned offset, unsigned size)
 	  prterr("domapread: mmap");
 	  report_failure(190);
    }
-   memcpy(temp_buf, p + pg_offset, size);
-
+   //jwd add, this copy will trigger cow, if the parameters are not aligned, some unpredictable errors will occur
+   memcpy(align_buf, p, map_size);
+   //jwd add, this copy, both sides are in memory, it doesn't matter if it is not aligned 
+   memcpy(temp_buf, align_buf+pg_offset, size);
+   //jwd add, delete the previous copy method, it will hang because there is no alignment
+   //memcpy(temp_buf, p + pg_offset, size);
+   
    check_eofpage("Read", offset, p, size);
 
    if (munmap(p, map_size) != 0) {
@@ -652,11 +596,11 @@ dowrite(unsigned offset, unsigned size)
    if (size == 0) {
 	  if (!quiet && testcalls > simulatedopcount)
 		 prt("skipping zero size write\n");
-	  my_log4(OP_SKIPPED, OP_WRITE, offset, size, rank);
+	  log4(OP_SKIPPED, OP_WRITE, offset, size);
 	  return;
    }
 
-   my_log4(OP_WRITE, offset, size, file_size, rank);
+   log4(OP_WRITE, offset, size, file_size);
 
    gendata(original_buf, good_buf, offset, size);
    if (file_size < offset + size) {
@@ -672,27 +616,25 @@ dowrite(unsigned offset, unsigned size)
    if (testcalls <= simulatedopcount)
 	  return;
 
-   /*if (!quiet && ((progressinterval &&
+   if (!quiet && ((progressinterval &&
 				   testcalls % progressinterval == 0) ||
 				  (debug &&
 				   (monitorstart == -1 ||
 					(offset + size > monitorstart &&
 					 (monitorend == -1 || offset <= monitorend))))))
-   prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes) \n", testcalls,
+	  prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		  offset, offset + size - 1, size);
    ret = lseek(fd, (off_t)offset, SEEK_SET);
    if (ret == (off_t)-1) {
 	  prterr("dowrite: lseek");
 	  report_failure(150);
-	  }*/
+   }
 
 #ifdef FSX_MPI
    if(rank == 0)
    {
 #endif
-   prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes) my_rank=%d\n", testcalls,
-		  offset, offset + size - 1, size, rank);
-   iret = pwrite(fd, good_buf + offset, size, offset);
+   iret = write(fd, good_buf + offset, size);
    if (iret != size) {
 	  if (iret == -1)
 		 prterr("dowrite: write");
@@ -754,6 +696,11 @@ domapwrite(unsigned offset, unsigned size)
 		 exit(201);
 	  }
    }
+#ifdef FSX_MPI
+//jwd add, similar to write, only node 0 operation file is required
+if(rank == 0)
+{
+#endif
    pg_offset = offset & page_mask;
    map_size  = pg_offset + size;
 
@@ -764,7 +711,8 @@ domapwrite(unsigned offset, unsigned size)
 	  report_failure(202);
    }
    memcpy(p + pg_offset, good_buf + offset, size);
-   if (msync(p, map_size, 0) != 0) {
+   //jwd modified, because MS_SYNC will ensure that the data is indeed written before returning ,to avoid data inconsistency afterwards
+   if (msync(p, map_size, MS_SYNC) != 0) {
 	  prterr("domapwrite: msync");
 	  report_failure(203);
    }
@@ -775,6 +723,9 @@ domapwrite(unsigned offset, unsigned size)
 	  prterr("domapwrite: munmap");
 	  report_failure(204);
    }
+#ifdef FSX_MPI
+}
+#endif
 }
 
 void
@@ -818,6 +769,15 @@ dotruncate(unsigned size)
    }
    MPI_Bcast(&file_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
 #endif
+  //jwd add, Synchronize the changed filesize to other nodes in time
+#ifdef FSX_MPI
+   MPI_Barrier(MPI_COMM_WORLD);
+   if((rank != 0)&& (file_size > oldsize))
+   {
+	memset(good_buf + oldsize, '\0', file_size - oldsize);
+   }
+#endif
+
 }
 
 
@@ -873,9 +833,8 @@ test(void)
    unsigned long	offset;
    unsigned long	size = maxoplen;
    unsigned long	rv = random();
-   //unsigned long	op = rv % (3 + !lite + mapped_writes);
-   //unsigned long	op = rv % (2 + !lite + mapped_writes);
-   unsigned long op = 1;
+   unsigned long	op = rv % (3 + !lite + mapped_writes);
+
    /* turn off the map read if necessary */
 
    if (op == 2 && !mapped_reads)
@@ -889,7 +848,8 @@ test(void)
 		 writefileimage();
 
    testcalls++;
-
+   //jwd add, log
+   prt("rank is %d and testcalls is %d\n", rank, testcalls);
    if (closeprob)
    {
 	  closeopen = (rv >> 3) < (1 << 28) / closeprob;
@@ -925,7 +885,13 @@ test(void)
 			if (offset + size > maxfilelen)
 			   size = maxfilelen - offset;
 			if (op != 1)
+			{
+			   //jwd add, Need to synchronize offset and size to avoid write overlap
+			   MPI_Barrier(MPI_COMM_WORLD);
+                           MPI_Bcast(&offset, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
+                           MPI_Bcast(&size, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
 			   domapwrite(offset, size);
+			}
 			else
 			{
 #ifdef FSX_MPI
@@ -941,6 +907,19 @@ test(void)
 			   doread(offset, size);
 #endif
 		 } else {
+			 //jwd add£¬Domapread only guarantees head alignment. 
+			 //I think it is necessary to keep the tail aligned, 
+			 //although the kernel will automatically align, but sometimes it will hang
+			 if(file_size && (0 != file_size%page_size))
+			 {
+			   //sometimes, maxfilelen is not necessarily an integer multiple of page, 
+			   //maybe it is only an integer multiple of 1024
+			   //So we prefer to align backwards, otherwise we will align forward
+			   if(file_size & ~page_mask <= maxfilelen)
+			     dotruncate(file_size & ~page_mask);
+			   else
+			     dotruncate(file_size - (file_size&page_mask));
+	         }
 			if (file_size)
 			   offset %= file_size;
 			else
@@ -1061,7 +1040,6 @@ main(int argc, char **argv)
 
    MPI_Init(&argc, &argv);
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-   prt("my_rank:  %d\n", rank);
 #endif
 
    goodfile[0] = 0;
@@ -1259,6 +1237,9 @@ main(int argc, char **argv)
 	  memset(good_buf, '\0', maxfilelen);
 	  temp_buf = (char *) malloc(maxoplen);
 	  memset(temp_buf, '\0', maxoplen);
+	  //jwd add, Initialize align_buf
+      align_buf = (char *) malloc(maxoplen);
+      memset(align_buf, '\0', maxoplen);
 	  if (lite) {	/* zero entire existing file */
 		 ssize_t written;
 		  
@@ -1278,16 +1259,14 @@ main(int argc, char **argv)
    }
    else
    {
-	  for (i = 0; i < maxfilelen; i++)
-		  random();
 	  original_buf = (char *) malloc(maxfilelen);
 	  good_buf = (char *) malloc(maxfilelen);
 	  memset(good_buf, '\0', maxfilelen);
 	  temp_buf = (char *) malloc(maxoplen);
 	  memset(temp_buf, '\0', maxoplen);
-	  
-	  temp_buf2 = (char *) malloc(maxoplen);
-	  memset(temp_buf2, '\0', maxoplen);
+	  //jwd add, Initialize align_buf
+      align_buf = (char *) malloc(maxoplen);
+      memset(align_buf, '\0', maxoplen);
    }
 
    /* Broadcast the original buffer. */
@@ -1332,7 +1311,7 @@ main(int argc, char **argv)
    }
 	
    if (close(fd)) {
-	   prterr("close");
+	  prterr("close");
 	  report_failure(99);
    }
 
