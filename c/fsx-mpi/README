@@ -32,3 +32,18 @@ usage: fsx [-dnqLOW] [-b opnum] [-c Prob] [-l flen] [-m start:end] [-o oplen] [-
     -W: mapped write operations DISabled
     -R: mapped read operations DISabled)
     fname: this filename is REQUIRED (no default)
+
+
+    fsx-mpi-don:
+    by wendong:
+    1.执行truncate，但是节点0是up，节点1是down，节点1的good_buf按照down的步骤，未进行memset. 下次op，节点1又获得了0广播出来的filesize，导致good_buf和实际file有了出入，出入的地方就是good_buf本    该memset的地方
+    修改方法：
+    在dotruncate结束时，节点0将真正的filesize广播出去，收到广播的节点，检查自己是否需要memset。
+
+    2.read出来和预期不符，原因是msync(p, map_size, 0), 这个参数0有问题，咱们的环境只能识别ms_async是1，ms_sync是4，ms_invalidate是2
+    修改方法：
+    msync(p, map_size, ms_sync)
+
+    3. domapread里面memcpy卡住，怀疑是page没对齐引起，具体原因还没找出
+    临时修改：
+    添加一个中间层，手动对齐
