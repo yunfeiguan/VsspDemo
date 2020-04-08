@@ -14,7 +14,7 @@ protected:
 public:
     ~CThread()
     {
-        pthread_join(m_tid, NULL);
+      pthread_join(m_tid, NULL);
     }
     int start();      //线程启动
     static void *_entry_func(void *arg);

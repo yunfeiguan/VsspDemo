@@ -45,7 +45,7 @@ int Connection::Connect()
 		cout << "Connect Error: " << strerror(errno) << endl;
 		return errno;
 	}
-    cout << "connect sucess fd: " << sockfd << endl;
+    cout << "INFO: >> connect sucess fd: " << sockfd << endl;
 
     if ((epollfd = epoll_create(1)) == -1) {
         cout << "epoll create Error: " << strerror(errno) << endl;
@@ -75,7 +75,7 @@ int Connection::Connect()
                 //cout << "fd is " << ev[i].data.fd << endl;
                 if (ev[i].data.fd == sockfd) {
                     Read_data(ev[i].data.fd);
-                    cout << "client " << buf << endl;
+                    //cout << "INFO: >> client recieve:" << buf << endl;
 
                     // start write
                     if (strcmp(buf, "write") == 0) {
@@ -126,7 +126,7 @@ int Connection::Send_data(int fd, const char *str)
 {
 	int r = 0;
 
-    cout << "Send_data fd: "<< fd << " " << str << endl;
+    //cout << "Send_data fd: "<< fd << " " << str << endl;
 	if (str) {
 		if ((r = write(fd, str, strlen(str))) == -1) {
 			cout << "Write Error: " << strerror(errno) << endl;
