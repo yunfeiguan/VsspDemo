@@ -1,0 +1,18 @@
+1. docker_build.sh  
+   build anna-test docker image.
+   you can change the name of image. 
+2. test.conf   
+   config test arguments,you can change if out of container.
+3. test_args.py  
+   get test conf from test.conf
+
+4. use
+   1) install mpich in all nodes
+   2) copy test_anna.sh to all nodes(/root/test_anna.sh)
+   3) add test nodes, example test in xt1-xt3:
+      cat /root/mpi-hosts
+      xt1
+      xt2
+      xt3
+   4) execute in one node, enter "Enter" twice
+      nohup mpiexec -f /root/mpi-hosts bash test_anna.sh &

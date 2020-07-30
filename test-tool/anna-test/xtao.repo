@@ -1,0 +1,5 @@
+[xtao_yum]
+name=xtao yum repo
+baseurl=http://10.46.220.91/test_tools/
+enabled=1
+gpgcheck=0
