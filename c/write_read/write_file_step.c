@@ -97,7 +97,7 @@ int main(int argc, char **argv)
         fill_buf(buf, letter, num);
         write_file(buf, num, fd, offset);
         
-        if (command == 'r') {
+        if (command == 'w') {
             printf("will write at same offset: %d\n", offset);    
         } else if (command == 'n') {
             offset += num;
