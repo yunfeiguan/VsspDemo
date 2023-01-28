@@ -1,0 +1,56 @@
+//#include "stdafx.h"
+#include "stdio.h"
+#include "stdlib.h"
+//#include "windows.h"
+//#include <io.h>
+#include <fcntl.h>
+
+int main()
+{
+    char rbuf[4096];
+    char *deffile = "./ivan.bin";
+    size_t r;
+    char *outfilename = deffile;
+    FILE *newin;
+
+    freopen(NULL, "rb", stdin);
+//    _setmode(_fileno(stdin), _O_BINARY);
+
+    FILE *f = fopen(outfilename, "w+b");
+    if (f == NULL)
+    {
+        printf("unable to open %s\n", outfilename);
+        exit(1);
+    }
+
+    int i = 0;
+    for (;; )
+    {
+        
+        r = fread(rbuf, 1, sizeof(rbuf), stdin);
+        if (r > 0)
+        {
+            size_t w;
+            for (size_t nleft = r; nleft > 0; )
+            {   
+                printf("i: %d\n", i++);
+                w = fwrite(rbuf, 1, nleft, f);
+                if (w == 0)
+                {
+                    printf("error: unable to write %d bytes to %s\n", nleft, outfilename);
+                    exit(1);
+                }
+                nleft -= w;
+                fflush(f);
+            }
+        }
+        if (r == 0)
+          return 0;
+        /*else
+        {
+            Sleep(10); // wait for more input, but not in a tight loop
+        }*/
+    }
+
+    return 0;
+}

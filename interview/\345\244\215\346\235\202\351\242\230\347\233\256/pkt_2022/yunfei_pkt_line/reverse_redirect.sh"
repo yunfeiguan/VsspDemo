@@ -1,0 +1,4 @@
+cat $1 | shasum
+./pkt-line --encode < $1 > .t.tmp
+./pkt-line --decode < .t.tmp | shasum
+rm .t.tmp

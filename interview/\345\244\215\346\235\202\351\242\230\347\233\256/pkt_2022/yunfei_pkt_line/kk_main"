@@ -1,0 +1,181 @@
+0018#include <string.h>
+0018#include <stdlib.h>
+0017#include <stdio.h>
+0006
+0023#define MAX_PACKAGE_SIZE 65520
+0023#define MAX_PAYLOAD_SIZE 65516
+0006
+002bchar buffer[MAX_PACKAGE_SIZE] = {'0'};
+0013char stop = 0;
+0006
+001bvoid usage(char *proc)
+0006{
+003d	printf("Error: should pass 2 arguments at least!\n\n");
+0017	printf("eg.\n"); 
+0046	printf("    cat file.xx | %s <--decode | --encode> \n\n", proc);
+0006}
+0006
+002evoid print_to_stdout(char *buf, int size)
+0006{
+0013	char c = '0';
+0010	int i = 0;
+0030	while((c =*(buf++)) != '\n' && i++ < size)
+0017		printf("%c", c);
+0015	if (c ==  '\n')
+0014		printf("\n");
+0006}
+0006
+002cint readline2(char *line, int max_size)
+0006{
+000c	int c;
+0012	int len = 0;
+003b	while (len < max_size && (c = getc(stdin)) != '\n') {
+0015		if(EOF == c) {
+0011			stop = 1;
+000e			break;
+0008		}
+0017		line[len++] = c;
+0007	}
+0006
+0013	// empty line
+0020	if (len == 0 && c == '\n')
+001a		line[len++] = '\n';
+0006	
+002f	if(len >0 && len < max_size  && c != EOF)
+001a		line[len++] = '\n';
+0021	//printf("len is %d", len);
+0011	return len;
+0006}
+0006
+002dvoid set_str_header(char *buf, int size)
+0006{
+0010	int i = 0;
+002a	char hexchar[] = "0123456789abcdef";
+0006
+001d	for (i = 0; i < 4; i++)
+0032		buf[i] = hexchar[(size >> 4*(4-i-1)) % 16];
+0006}
+0006
+0029int hexstr_to_length(char *hexstr) {
+002a	char hexchar[] = "0123456789abcdef";
+0006
+0006	
+001f	int sum = 0, j = 0, i =0;
+001f	for (i = 0; i < 4; i++) {
+0029		while (hexstr[i] != hexchar[j++]);
+0021		sum |= (j-1) << 4*(4-i-1);
+000d		j = 0;
+0007	}
+0006
+0011	return sum;
+0006}
+0033int pack(char *format_str, char *buf, int len)
+0006{
+0027	if (len == 1 && buf[0] == '\n') {
+0019		printf("%s", buf);
+0010		return 0;
+0007	}
+0006
+0028	set_str_header(format_str, len+4);
+0025	memcpy(format_str+4, buf, len);
+0029	print_to_stdout(format_str, len+4);
+000f	return 0;
+0006}
+0006
+0026int encode(int argc, char **argv)
+0006{
+0019	int len = 0, i = 0;
+0031	char format_str[MAX_PACKAGE_SIZE] = {'\0'};
+0011	if (argc) {
+0018		while(i < argc) {
+001e			len = strlen(argv[i]);
+0027			pack(format_str, argv[i], len);
+0015			printf("\n");
+000c			i++;
+0008		}
+000e	} else {
+003d		while ((len = readline2(buffer, MAX_PAYLOAD_SIZE)) ) {
+002d		        pack(format_str, buffer, len);
+0017			fflush(stdout);
+0031			memset(buffer, '\0', MAX_PAYLOAD_SIZE+1);
+0008			
+0011			if (stop)
+0012				return 0;
+0008		}
+0007	}
+0015	printf("0000");
+000f	return 0;
+0006}
+0006
+002dint unpack(char  *format_str, char *buf)
+0006{
+0023        char head[5] = {'\0'};
+0012	int len = 0;
+001c	strncpy(head, buf, 4);
+0006
+0032        // don't do any format for empty line
+001b	if (buf[0] == '\n') {
+0019		printf("%s", buf);
+0010		return 0;
+0007	}
+0006
+0027	len = hexstr_to_length(head) - 4;
+0023	//printf("i len is %d", len);
+0048	if (strncmp(buf, "0004", 4) <= 0 && strncmp(buf, "0000", 4) > 0) {
+0031		//printf("ERR: invalid argment: %s", buf);
+0010		return 0;
+0007	}
+0006
+0029	if (strncmp("0000", buf, 4) == 0) {
+001f		//printf("0000 exit\n");
+0010		return 0;
+0007	}
+0006
+0025	memcpy(format_str, buf+4, len);
+0027	print_to_stdout(format_str, len);
+000f	return 0;
+0006}
+0006
+0026int decode(int argc, char **argv)
+0006{
+0019	int len = 0, i = 0;
+0031	char format_str[MAX_PACKAGE_SIZE] = {'\0'};
+0011	if (argc) {
+0018		while(i < argc) {
+0024			unpack(format_str, argv[i]);
+0015			printf("\n");
+000c			i++;
+0008		}
+000e	} else {
+003c		while ((len = readline2(buffer, MAX_PACKAGE_SIZE))) {
+0026			if(unpack(format_str, buffer))
+0012				return 0;
+000b		    
+0011			if (stop)
+0012				return 0;
+0008		}
+0007	}
+0010	return 0; 
+0006}
+0006
+0024int main(int argc, char **argv)
+0006{
+0018    if (argc < 2) {
+0019	    usage(argv[0]);
+0014	    return -1;
+000a    }
+0006
+0024    freopen(NULL, "rb", stdin);
+002d    if (strcmp(argv[1],"--encode") == 0)
+0021	    encode(argc-2, argv+2);
+0033    else if (strcmp(argv[1], "--decode") == 0)
+0021	    decode(argc-2, argv+2);
+0015    else {      
+0036	    printf("invalidate op type: %s\n", argv[1]);
+0019	    usage(argv[1]);
+0014	    return -1;
+000a    }
+0009    
+0012    return 0;
+0006}
+0000

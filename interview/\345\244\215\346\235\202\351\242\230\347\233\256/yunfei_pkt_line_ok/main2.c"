@@ -1,0 +1,155 @@
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define MAX_PACKAGE_SIZE 65520
+#define MAX_PAYLOAD_SIZE 65516
+
+char buffer[MAX_PACKAGE_SIZE +1] = {'0'};
+
+void usage(char *proc)
+{
+	printf("Error: should pass 2 arguments at least!\n\n");
+	printf("eg.\n"); 
+	printf("    cat file.xx | %s <--decode | --encode> \n\n", proc);
+}
+
+void print_to_stdout(char *buf, int size)
+{
+	char c = '0';
+	int i = 0;
+	while((c =*(buf++)) != '\n' && i++ < size)
+		printf("%c", c);
+	printf("\n");
+}
+
+int readline(char* line, int max_size)
+{
+	char c;
+	int r = 0;
+	int len = 0;
+
+	//printf("read");
+	memset(line, '\0', MAX_PAYLOAD_SIZE+1);
+	if ((len = fread(line, 1, max_size, stdin))) {
+			//while (line[len] == '\0' && len > 0)
+			//len--;
+
+			//len++;
+		//printf("len is %d ", len);
+	} else {
+		len = 0;
+		//printf("len is %d ", len);
+	}
+
+	return len;
+}
+
+int readline2(char *line, int max_size)
+{
+	int c;
+	int len = 0;
+	while ((c = getc(stdin)) != EOF && len < max_size) {
+		line[len++] = c;
+		if('\n' == c)
+			break;
+	}
+	line[len] = '\0';
+	//printf("len is %d str is %s\n", len, line);
+	return len;
+}
+	
+void set_str_header(char *buf, int size)
+{
+    	 char hexchar[] = "0123456789abcdef";
+
+	 for (int i = 0; i < 4; i++)
+		 buf[i] = hexchar[(size >> 4*(4-i-1)) % 16];
+}
+
+void set_packet_header(char *buf, int size)
+{
+	static char hexchar[] = "0123456789abcdef";
+
+	#define hex(a) (hexchar[(a) & 15])
+	buf[0] = hex(size >> 12);
+	buf[1] = hex(size >> 8);
+	buf[2] = hex(size >> 4);
+	buf[3] = hex(size);
+	#undef hex
+}
+
+int encode()
+{
+	int len = 0;
+	char format_str[MAX_PACKAGE_SIZE+1] = {'\0'};
+	while ((len = readline(buffer, MAX_PAYLOAD_SIZE+1))) {
+		if (len == 1 && buffer[0] == '\n') {
+			printf("%s", buffer);
+			continue;
+		}
+		
+		//printf("buffer is %s  size:%d\n", buffer, len+4);
+		//sprintf(format_str, "%04X", len+4);
+		set_packet_header(format_str, len+4);
+		//printf("format:%s", format_str);
+		memcpy(format_str+4, buffer, len+1);
+		//printf("ivan");
+		print_to_stdout(format_str, len+4);
+		fflush(stdout);
+	}
+	memset(buffer, '\0', MAX_PAYLOAD_SIZE+1);
+	printf("0000");
+	return 0;
+}
+
+int decode()
+{
+    int len = 0;
+    char format_str[MAX_PACKAGE_SIZE+1] = {'\0'};
+    while ((len = readline(buffer, MAX_PACKAGE_SIZE+1))) {
+        // don't do any format for empty line
+        if (len == 1 && buffer[0] == '\n') {
+		printf("%s", buffer);
+		continue;
+        }
+
+        if (strncmp(buffer, "0004", 4) <= 0 && strncmp(buffer, "0000", 4) > 0) {
+		printf("ERR: invalid argment: %s", buffer);
+		return -1;
+        }
+
+	//printf("decode str:%s", buffer);
+        if (strncmp("0000", buffer, 4) == 0) {
+		//printf("0000 exit\n");
+		return 0;
+        }
+
+        memcpy(format_str, buffer+4, len-4);
+	print_to_stdout(format_str, len-4);
+        //printf("%s", format_str);
+    }
+
+    return 0; 
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 2) {
+	    usage(argv[0]);
+	    return -1;
+    }
+
+    freopen(NULL, "rb", stdin);
+    if (strcmp(argv[1],"--encode") == 0)
+	    encode();
+    else if (strcmp(argv[1], "--decode") == 0)
+	    decode();
+    else {      
+	    printf("invalidate op type: %s\n", argv[1]);
+	    usage(argv[1]);
+	    return -1;
+    }
+    
+    return 0;
+}

@@ -1,0 +1,2 @@
+cat $1 | shasum
+cat $1 | ./pkt-line --encode | ./pkt-line --decode | shasum

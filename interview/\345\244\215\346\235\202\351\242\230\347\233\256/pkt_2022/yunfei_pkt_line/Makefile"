@@ -1,0 +1,8 @@
+pkt-line:main.o
+	gcc main.o -o pkt-line 
+
+main.o:main.c
+	gcc -c main.c -o main.o  
+
+clean:
+	rm -rf *.o pkt-line 
