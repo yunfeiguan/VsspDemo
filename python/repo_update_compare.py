@@ -64,7 +64,7 @@ def update_packages(src_path, dest_path):
 		
 		
 def compare_packages(src_path, dest_path):
-    print 'starting update packges ... '
+    print 'starting comparing packges ... '
     # list all files in the parent directory
     dirs = [f for f in os.listdir(src_path)]
 
